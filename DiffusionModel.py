@@ -6,9 +6,8 @@ from torch.utils.data import DataLoader, Dataset
 import os
 from PIL import Image
 
-
 # -------------------------------
-# UNet Architecture for Diffusion
+# UNet Architecture for Diffusion Model
 # -------------------------------
 class UNet(nn.Module):
     def __init__(self, in_channels=3, out_channels=3, features=[64, 128, 256, 512]):
@@ -69,9 +68,8 @@ class UNet(nn.Module):
 
         return self.final_layer(x)
 
-
 # --------------------------------
-# Diffusion Process Implementation
+# Diffusion Model Implementation
 # --------------------------------
 class DiffusionModel(nn.Module):
     def __init__(self, timesteps=1000):
@@ -79,23 +77,27 @@ class DiffusionModel(nn.Module):
         self.timesteps = timesteps
         self.unet = UNet(in_channels=3, out_channels=3)
 
+        # Noise Schedule (Beta values)
+        self.beta_schedule = torch.linspace(0.0001, 0.02, timesteps)
+        self.alpha_schedule = 1.0 - self.beta_schedule
+        self.alpha_cumprod = torch.cumprod(self.alpha_schedule, dim=0)
+
     def forward_process(self, x, t):
         """ Adds noise to the image at a given timestep `t` """
         noise = torch.randn_like(x)
-        alpha_t = torch.linspace(0.0001, 0.02, self.timesteps)[t].to(x.device)
+        alpha_t = self.alpha_cumprod[t].to(x.device)
         return torch.sqrt(alpha_t) * x + torch.sqrt(1 - alpha_t) * noise
 
     def reverse_process(self, x):
-        """ Denoising process: Removes noise step by step using U-Net """
+        """ Removes noise step by step using U-Net """
         for t in reversed(range(self.timesteps)):
-            x = self.unet(x)
-            alpha_t = torch.linspace(0.0001, 0.02, self.timesteps)[t].to(x.device)
-            x = (x - torch.sqrt(1 - alpha_t) * torch.randn_like(x)) / torch.sqrt(alpha_t)
+            predicted_noise = self.unet(x)
+            alpha_t = self.alpha_cumprod[t].to(x.device)
+            x = (x - torch.sqrt(1 - alpha_t) * predicted_noise) / torch.sqrt(alpha_t)
         return torch.clamp(x, -1, 1)  # Ensure pixel values remain valid
 
-
 # --------------------------------
-# Dataset & Image Loader
+# Dataset & Image Loader for MPI Output
 # --------------------------------
 class MPIDataset(Dataset):
     def __init__(self, folder_path, transform=None):
@@ -113,66 +115,60 @@ class MPIDataset(Dataset):
             image = self.transform(image)
         return image
 
-
 # --------------------------------
-# Model Training & Integration
+# Training the Diffusion Model
 # --------------------------------
 def train_diffusion_model():
-    # Load MPI-based noisy images
-    folder_path = "path_to_mpi_output_images"
+    folder_path = "path_to_mpi_output_images"  # 🔹 This folder should contain MPI-generated images
     transform = transforms.Compose([
-        transforms.Resize((512, 256)),
+        transforms.Resize((512, 256)),  # 🔹 Ensure consistency with the expected input size
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5]),  # Normalize between [-1, 1]
+        transforms.Normalize(mean=[0.5], std=[0.5]),  # 🔹 Normalize between [-1, 1]
     ])
 
     dataset = MPIDataset(folder_path, transform=transform)
     dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
-    # Initialize Model
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = DiffusionModel().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    criterion = nn.MSELoss()
 
-    # Training Loop
-    for epoch in range(10):  # Adjust number of epochs as needed
+    # Loss Function (MSE for Image Reconstruction)
+    mse_loss = nn.MSELoss()
+
+    for epoch in range(10):  # 🔹 Adjust epochs as needed
         for batch_idx, images in enumerate(dataloader):
             images = images.to(device)
 
-            # Apply forward diffusion (Noise Addition)
+            # Apply Forward Diffusion (Noise Addition)
             t = torch.randint(0, model.timesteps, (images.shape[0],), device=device)
             noisy_images = model.forward_process(images, t)
 
             # Reverse Process (Denoising)
             generated_images = model.reverse_process(noisy_images)
 
-            # Compute Loss
-            loss = criterion(generated_images, images)  # Compare denoised vs. ground truth
+            # Compute Loss (MSE)
+            loss = mse_loss(generated_images, images)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             if batch_idx % 10 == 0:
-                print(f"Epoch [{epoch + 1}/10], Step [{batch_idx + 1}/{len(dataloader)}], Loss: {loss.item():.4f}")
+                print(f"Epoch [{epoch+1}/10], Step [{batch_idx+1}/{len(dataloader)}], Loss: {loss.item():.4f}")
 
-    # Save Model
     torch.save(model.state_dict(), "diffusion_model.pth")
 
-
 # --------------------------------
-# Model Inference (Image Generation)
+# Inference (Generating Final Street View)
 # --------------------------------
 def generate_images():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Load trained model
     model = DiffusionModel().to(device)
     model.load_state_dict(torch.load("diffusion_model.pth"))
     model.eval()
 
-    # Load a single noisy street-view image
-    img_path = "path_to_noisy_image.png"
+    img_path = "path_to_noisy_image.png"  # 🔹 MPI-generated noisy street view
     image = Image.open(img_path).convert("RGB")
     transform = transforms.Compose([
         transforms.Resize((512, 256)),
@@ -181,14 +177,13 @@ def generate_images():
     ])
     image = transform(image).unsqueeze(0).to(device)
 
-    # Generate final street-view image
+    # Generate cleaned street-view image
     with torch.no_grad():
         generated_image = model.reverse_process(image)
 
-    # Convert to PIL image and save
+    # Convert back to RGB format
     generated_image = (generated_image.squeeze(0).cpu() * 255).permute(1, 2, 0).numpy().astype("uint8")
     Image.fromarray(generated_image).save("generated_streetview.png")
-
 
 # --------------------------------
 # Run Training or Inference
