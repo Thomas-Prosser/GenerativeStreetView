@@ -1,11 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
-import torchvision.transforms as transforms
-from PIL import Image
-import os
 
+# Model definition
 class HeightEstimationNetwork(nn.Module):
     def __init__(self, num_height_levels=64):
         super(HeightEstimationNetwork, self).__init__()
@@ -46,43 +43,31 @@ class HeightEstimationNetwork(nn.Module):
         # Apply softmax across the height levels (channel dimension)
         height_probabilities = F.softmax(x, dim=1)
 
-        # Rearrange dimensions to BS, H, W, N
+        # Rearrange dimensions to (Batch, Height, Width, HeightLevels)
         height_probabilities = height_probabilities.permute(0, 2, 3, 1)
 
         return height_probabilities
 
-class ImageFolderDataset(Dataset):
-    def __init__(self, folder_path, transform=None):
-        self.folder_path = folder_path
-        self.image_files = [f for f in os.listdir(folder_path) if f.endswith(('png', 'jpg', 'jpeg'))]
-        self.transform = transform
 
-    def __len__(self):
-        return len(self.image_files)
-
-    def __getitem__(self, idx):
-        image_path = os.path.join(self.folder_path, self.image_files[idx])
-        image = Image.open(image_path).convert('RGB')
-        if self.transform:
-            image = self.transform(image)
-        return image
-
+# Main Execution (Pure Tensor Input)
 if __name__ == "__main__":
-    # Path to the folder containing images
-    folder_path = "path_to_your_folder"
+    # Set device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Define transformations
-    transform = transforms.Compose([
-        transforms.Resize((256, 256)),
-        transforms.ToTensor(),
-    ])
+    # Initialize the model and move to device
+    model = HeightEstimationNetwork(num_height_levels=64).to(device)
+    model.train()  # Ensure gradients are tracked
 
-    # Create dataset and dataloader
-    dataset = ImageFolderDataset(folder_path, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
+    # Define input tensor (Example: Random Tensor with Batch=2)
+    batch_size = 2
+    input_tensor = torch.randn((batch_size, 3, 256, 256), device=device)  # Simulated input
 
-    # Initialize the model
-    model = HeightEstimationNetwork(num_height_levels=64)
+    # Forward pass through the model
+    height_probabilities = model(input_tensor)
+
+    print(f"Input shape: {input_tensor.shape}")  # Expected: [Batch, 3, 256, 256]
+    print(f"Output shape: {height_probabilities.shape}")  # Expected: [Batch, 256, 256, 64]
+
 
     # Process each batch of images
     for batch_idx, images in enumerate(dataloader):
