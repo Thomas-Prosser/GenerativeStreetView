@@ -7,8 +7,8 @@ import matplotlib
 matplotlib.use('TkAgg')
 
 # Define paths
-satview_path = "C:\\Users\\immar\\Downloads\\Desktop\\CVACT\\SatView"
-streetview_path = "C:\\Users\\immar\\Downloads\\Desktop\\CVACT\\GroundTruth"
+satview_path = "C:\\Users\\immar\\Downloads\\Desktop\\CVACT\\SatView" #Change the folder location
+streetview_path = "C:\\Users\\immar\\Downloads\\Desktop\\CVACT\\GroundTruth" #Change the folder location
 
 # Define transforms: Resize, Convert to Tensor, Normalize
 transform = transforms.Compose([
