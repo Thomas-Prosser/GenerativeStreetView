@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Model definition
 class HeightEstimationNetwork(nn.Module):
     def __init__(self, num_height_levels=64):
         super(HeightEstimationNetwork, self).__init__()
@@ -48,28 +47,14 @@ class HeightEstimationNetwork(nn.Module):
 
         return height_probabilities
 
-
-# Main Execution (Pure Tensor Input)
 if __name__ == "__main__":
-    # Set device
+    # For testing purposes
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Initialize the model and move to device
     model = HeightEstimationNetwork(num_height_levels=64).to(device)
-    model.train()  # Ensure gradients are tracked
-
-    # Define input tensor (Example: Random Tensor with Batch=2)
+    model.train()
     batch_size = 2
-    input_tensor = torch.randn((batch_size, 3, 256, 256), device=device)  # Simulated input
+    input_tensor = torch.randn((batch_size, 3, 256, 256), device=device)
+    height_probs = model(input_tensor)
+    print(f"Input shape: {input_tensor.shape}")
+    print(f"Output shape: {height_probs.shape}")  # Expected: (Batch, 256, 256, 64)
 
-    # Forward pass through the model
-    height_probabilities = model(input_tensor)
-
-    print(f"Input shape: {input_tensor.shape}")  # Expected: [Batch, 3, 256, 256]
-    print(f"Output shape: {height_probabilities.shape}")  # Expected: [Batch, 256, 256, 64]
-
-
-    # Process each batch of images
-    for batch_idx, images in enumerate(dataloader):
-        height_probabilities = model(images)
-        print(f"Batch {batch_idx + 1}: Output shape: {height_probabilities.shape}")  # Should be [1, 256, 256, 64] [BS, H, W, N]
