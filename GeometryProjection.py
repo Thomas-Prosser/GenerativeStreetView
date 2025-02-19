@@ -11,8 +11,8 @@ class GeometryProjection:
                  num_planes=64,        # Number of height planes
                  device='cuda'):
         """
-        Initialize Geometry Projection for CVACT dataset
-        All parameters optimized for CVACT street-view synthesis
+        Initialize Geometry Projection for CVACT dataset.
+        All parameters optimized for CVACT street-view synthesis.
         """
         self.target_height = target_height
         self.target_width = target_width
@@ -32,12 +32,12 @@ class GeometryProjection:
         # Calculate viewing angles once
         self.tanPhi = torch.tan(self.ii / self.target_height * np.pi)
         self.tanPhi = torch.where(self.tanPhi == 0, 
-                                 torch.tensor(1e-6, device=device),
-                                 self.tanPhi)
+                                  torch.tensor(1e-6, device=device),
+                                  self.tanPhi)
         
     def preprocess_input(self, satellite_images):
         """
-        Preprocess input satellite images from CVACT format
+        Preprocess input satellite images from CVACT format.
         Args:
             satellite_images: tensor of shape (N, 3, 256, 256)
         Returns:
@@ -49,12 +49,12 @@ class GeometryProjection:
         
     def create_mpi(self, satellite_image, height_probs):
         """
-        Create Multi-Plane Image (MPI) representation
+        Create Multi-Plane Image (MPI) representation.
         Args:
             satellite_image: (N, 256, 256, 3) tensor
             height_probs: (N, 256, 256, num_planes) tensor
         Returns:
-            MPI layers with color and alpha channels
+            MPI layers with color and alpha channels.
         """
         # Create alpha channels using cumulative sum of height probabilities
         alpha = torch.cumsum(height_probs, dim=-1)  # Cumulative probabilities
@@ -72,11 +72,11 @@ class GeometryProjection:
         
     def project_to_street_view(self, mpi_layers):
         """
-        Project MPI layers to street-view perspective
+        Project MPI layers to street-view perspective.
         Args:
-            mpi_layers: RGBA MPI representation
+            mpi_layers: RGBA MPI representation.
         Returns:
-            street_view_mpi: Projected layers in street-view perspective
+            street_view_mpi: Projected layers in street-view perspective.
         """
         input_size = mpi_layers.shape[1]
         radius = input_size // 4
@@ -92,11 +92,13 @@ class GeometryProjection:
                          (self.max_height - self.grd_height) * \
                          (self.num_planes - 1)
             
-            # Calculate projection coordinates
+            # Calculate projection coordinates (theta remains unchanged)
             theta = self.jj
+            # (coords is computed but not directly used; we rely on F.interpolate below)
             coords = torch.stack([theta, z_normalized], dim=-1)
             
-            # Sample from MPI layers
+            # Sample from MPI layers using bilinear interpolation.
+            # Here we simply resize the layer corresponding to the current radius.
             warped = F.interpolate(
                 mpi_layers[:, :, :, r, :].permute(0, 3, 1, 2),  # Convert to NCHW
                 size=(self.target_height, self.target_width),
@@ -110,18 +112,18 @@ class GeometryProjection:
         
     def render_final_image(self, street_view_mpi):
         """
-        Render final street-view panorama using alpha compositing
+        Render final street-view panorama using alpha compositing.
         Args:
-            street_view_mpi: Projected MPI layers
+            street_view_mpi: Projected MPI layers.
         Returns:
-            final_image: Rendered street-view panorama
+            final_image: Rendered street-view panorama.
         """
         # Split into RGB and alpha
         rgb = street_view_mpi[..., :3]
         alpha = street_view_mpi[..., 3:]
         
         # Composite from back to front
-        output = rgb[..., 0, :]  # Initialize with furthest layer
+        output = rgb[..., 0, :]  # Initialize with the furthest layer
         
         for i in range(1, street_view_mpi.shape[3]):
             curr_rgb = rgb[..., i, :]
@@ -132,42 +134,27 @@ class GeometryProjection:
         
     def __call__(self, satellite_images, height_probabilities):
         """
-        Main function to perform geometry projection
+        Main function to perform geometry projection.
         Args:
-            satellite_images: (N, 3, 256, 256) input tensor
-            height_probabilities: (N, 256, 256, 64) height predictions
+            satellite_images: (N, 3, 256, 256) input tensor.
+            height_probabilities: (N, 256, 256, 64) height predictions.
         Returns:
-            street_view_panoramas: (N, 256, 512, 3) output tensor
+            street_view_panoramas: (N, 256, 512, 3) output tensor.
         """
-        # Ensure inputs are on correct device
+        # Ensure inputs are on the correct device.
         satellite_images = satellite_images.to(self.device)
         height_probabilities = height_probabilities.to(self.device)
         
-        # Preprocess input
+        # Preprocess input.
         sat_processed = self.preprocess_input(satellite_images)
         
-        # Create MPI representation
+        # Create MPI representation.
         mpi = self.create_mpi(sat_processed, height_probabilities)
         
-        # Project to street view
+        # Project to street view.
         street_view_mpi = self.project_to_street_view(mpi)
         
-        # Render final panorama
+        # Render final panorama.
         panorama = self.render_final_image(street_view_mpi)
         
         return panorama
-
-# Usage example:
-"""
-# Initialize projection
-projector = GeometryProjection(device='cuda')
-
-# Process batch of images (assuming tensors are on CPU)
-satellite_tensor = ...  # Your (73, 3, 256, 256) input
-height_probs = ...     # Your (73, 256, 256, 64) height probabilities
-
-# Get street view panoramas
-with torch.no_grad():  # For inference
-    panoramas = projector(satellite_tensor, height_probs)
-# Result shape: (73, 256, 512, 3)
-"""
