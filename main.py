@@ -31,12 +31,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Height estimation network (outputs shape: (N, 256, 256, 64))
 height_model = HeightEstimationNetwork(num_height_levels=64).to(device)
-# Diffusion model for refinement.
-diffusion_model = DiffusionModel(timesteps=1000).to(device)
 # Geometry projection module.
 geometry_projector = GeometryProjection(target_height=256, target_width=512, 
                                         grd_height=-2, max_height=6, 
                                         num_planes=64, device=device)
+# Diffusion model for refinement.
+diffusion_model = DiffusionModel(timesteps=1000).to(device)
+
 # Perceptual loss module.
 perceptual_loss_module = PerceptualLoss(device=device).to(device)
 
